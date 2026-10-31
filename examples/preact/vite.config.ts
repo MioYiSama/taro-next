@@ -4,9 +4,6 @@ import taro from "@taro-next/plugin/vite";
 export default defineConfig({
   plugins: [
     taro({
-      projectConfig: {
-        appid: "wx1234",
-      },
       appConfig: {
         window: {
           navigationBarTextStyle: "black",
@@ -14,7 +11,6 @@ export default defineConfig({
           navigationBarBackgroundColor: "#ffffff",
         },
       },
-      pageConfig: {},
     }),
   ],
 });

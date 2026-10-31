@@ -3,13 +3,15 @@
  * serialized DOM, the page and the `comp` component that continues rendering
  * past `baseLevel` nesting levels.
  */
+import { attrKey, VIEW_VARIANTS } from "@taro-next/runtime/components";
+
 import {
   type AttrDefault,
+  COMMON_ATTRS,
   COMPONENTS,
   type ComponentSpec,
   TOUCH_EVENTS,
-  attrKey,
-} from "@taro-next/runtime/components";
+} from "./components";
 
 export const PAGE = "pages/index/index";
 
@@ -42,9 +44,10 @@ interface Variant {
   catchMove?: boolean;
 }
 
-function variants(): Variant[] {
+function variants(used: Set<string>): Variant[] {
   const list: Variant[] = [];
   for (const [tag, spec] of Object.entries(COMPONENTS)) {
+    if (!used.has(tag)) continue;
     list.push({
       name: tag,
       tag,
@@ -53,10 +56,10 @@ function variants(): Variant[] {
     });
   }
   const view = COMPONENTS.view;
-  list.push(
-    { name: "static-view", tag: "view", spec: view, events: [] },
-    { name: "click-view", tag: "view", spec: view, events: ["tap"] },
-    { name: "catch-view", tag: "view", spec: view, events: TOUCH_EVENTS, catchMove: true },
+  if (used.has("view")) list.push(
+    { name: VIEW_VARIANTS[0], tag: "view", spec: { ...view, attrs: COMMON_ATTRS }, events: [] },
+    { name: VIEW_VARIANTS[1], tag: "view", spec: { ...view, attrs: COMMON_ATTRS }, events: ["tap"] },
+    { name: VIEW_VARIANTS[2], tag: "view", spec: view, events: TOUCH_EVENTS, catchMove: true },
   );
   return list;
 }
@@ -64,13 +67,15 @@ function variants(): Variant[] {
 /** Childless components don't depend on the level, so they get a single `tmpl_<nn>` template. */
 function template(variant: Variant, level: number | null, baseLevel: number): string {
   const attrs = [
-    'id="{{i.uid}}"',
+    'id="{{i.id}}"',
     'data-sid="{{i.sid}}"',
     'class="{{i.cl}}"',
     'style="{{i.st}}"',
     ...Object.entries(variant.spec.attrs).map(([name, value]) => attrBinding(name, value)),
     ...variant.events.map((event) =>
-      variant.catchMove && event === "touchmove" ? 'catchtouchmove="eh"' : `bind${event}="eh"`,
+      variant.catchMove && event === "touchmove"
+        ? 'catchtouchmove="eh"'
+        : TOUCH_EVENTS.includes(event) ? `mut-bind:${event}="eh"` : `bind${event}="eh"`,
     ),
   ];
   const name = level === null ? `tmpl_${variant.name}` : `tmpl_${level}_${variant.name}`;
@@ -79,8 +84,8 @@ function template(variant: Variant, level: number | null, baseLevel: number): st
 }
 
 /** `base.wxml`: one template per component and nesting level. */
-export function baseWxml(baseLevel: number): string {
-  const list = variants();
+export function baseWxml(baseLevel: number, used: Set<string>): string {
+  const list = variants(used);
   const lines = ['<wxs module="xs" src="./utils.wxs"/>'];
   for (const variant of list) {
     if (!variant.spec.children) lines.push(template(variant, null, baseLevel));
@@ -100,8 +105,8 @@ export function baseWxml(baseLevel: number): string {
  * `utils.wxs`: `b` substitutes the component default for missing values, `t`
  * names the template rendering a node at a level.
  */
-export function utilsWxs(): string {
-  const leaves = Object.keys(COMPONENTS).filter((name) => !COMPONENTS[name].children);
+export function utilsWxs(used: Set<string>): string {
+  const leaves = Object.keys(COMPONENTS).filter((name) => used.has(name) && !COMPONENTS[name].children);
   return `var leaves = ${JSON.stringify(Object.fromEntries(leaves.map((name) => [name, true])))};
 module.exports = {
   b: function (value, fallback) {

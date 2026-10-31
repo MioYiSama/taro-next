@@ -96,6 +96,60 @@ export class Event {
   }
 }
 
+export class FocusEvent extends Event {
+  readonly relatedTarget = null;
+}
+
+export interface KeyboardEventInit extends EventInit {
+  key?: string;
+  code?: string;
+  keyCode?: number;
+  which?: number;
+  charCode?: number;
+  altKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  shiftKey?: boolean;
+  repeat?: boolean;
+  isComposing?: boolean;
+  location?: number;
+}
+
+export class KeyboardEvent extends Event {
+  readonly key: string;
+  readonly code: string;
+  readonly keyCode: number;
+  readonly which: number;
+  readonly charCode: number;
+  readonly altKey: boolean;
+  readonly ctrlKey: boolean;
+  readonly metaKey: boolean;
+  readonly shiftKey: boolean;
+  readonly repeat: boolean;
+  readonly isComposing: boolean;
+  readonly location: number;
+
+  constructor(type: string, init: KeyboardEventInit = {}) {
+    super(type, init);
+    this.key = init.key ?? "";
+    this.code = init.code ?? "";
+    this.keyCode = init.keyCode ?? 0;
+    this.which = init.which ?? 0;
+    this.charCode = init.charCode ?? 0;
+    this.altKey = !!init.altKey;
+    this.ctrlKey = !!init.ctrlKey;
+    this.metaKey = !!init.metaKey;
+    this.shiftKey = !!init.shiftKey;
+    this.repeat = !!init.repeat;
+    this.isComposing = !!init.isComposing;
+    this.location = init.location ?? 0;
+  }
+
+  getModifierState(_key: string): boolean {
+    return false;
+  }
+}
+
 export interface CustomEventInit<T = unknown> extends EventInit {
   detail?: T;
 }

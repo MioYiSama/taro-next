@@ -1,3 +1,15 @@
 .title {
   color: red;
 }
+
+div {
+  margin: 10px;
+}
+
+:root {
+  --gap: 4px;
+}
+
+* {
+  box-sizing: border-box;
+}

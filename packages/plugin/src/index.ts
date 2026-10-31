@@ -12,8 +12,8 @@ import type { ProjectConfigSchema } from "./schema/project.config.schema";
 
 export interface Options {
   /**
-   * App entry, resolved from the project root. It calls `start()` from
-   * `@taro-next/runtime`.
+   * App entry, resolved from the project root: plain web code rendering into
+   * `document.body` at its top level.
    * @default "src/index"
    */
   entry?: string;
@@ -25,6 +25,23 @@ export interface Options {
    * @default 16
    */
   baseLevel?: number;
+
+  /**
+   * px in CSS and inline styles become rpx: `rpx = px * 750 / designWidth`;
+   * write `PX` to keep a pixel value. Set false to keep all px unchanged.
+   * @default { designWidth: 750 }
+   */
+  pxtransform?: false | { designWidth?: number };
+
+  /**
+   * Native components to always generate templates for, in addition to the
+   * ones found in the sources (markup like `<video`, or a string literal
+   * like `createElement("video")`; items of literal lists and `case` labels
+   * don't count). Dynamically constructed names, or names only taken from a
+   * list, must be listed: a node whose native component was pruned renders
+   * nothing.
+   */
+  components?: string[];
 
   /**
    * https://developers.weixin.qq.com/miniprogram/dev/devtools/projectconfig.md
@@ -73,6 +90,13 @@ export const unplugin: UnpluginFactory<Options | null | undefined> = (options, m
       for (const [fileName, source] of Object.entries(core.files())) {
         this.emitFile({ type: "asset", fileName, source });
       }
+    },
+    transform: {
+      filter: { id: { exclude: [/^\0/, /\.(css|less|sass|scss|styl|stylus|pcss|postcss)(\?|$)/] } },
+      handler(code, id) {
+        core.scan(id, code);
+        return null;
+      },
     },
     ...adapter(core),
   };

@@ -2,7 +2,7 @@
  * webpack, rspack and rsbuild: one `app.js` chunk, the CSS assets the
  * user's CSS setup emits merged into `app.wxss`.
  */
-import { APP_ID, APP_WXSS, type Core, type Hooks, INJECT, NAME, virtualModules } from "../core";
+import { APP_ID, type Core, type Hooks, INJECT, NAME, virtualModules } from "../core";
 
 interface Source {
   source(): string | Buffer;
@@ -30,6 +30,7 @@ interface Compiler {
   options: {
     context?: string;
     entry: unknown;
+    target?: string | string[] | false;
     devtool?: unknown;
     output: { filename?: unknown };
     optimization: { splitChunks?: unknown; runtimeChunk?: unknown };
@@ -63,7 +64,9 @@ function extend(core: Core, compiler: Compiler): void {
           css += asset.source().toString();
           compilation.deleteAsset(file);
         }
-        compilation.emitAsset(APP_WXSS, new webpack.sources.RawSource(core.wxss(css)));
+        for (const [name, source] of Object.entries(core.outputs(css))) {
+          compilation.emitAsset(name, new webpack.sources.RawSource(source));
+        }
       },
     );
   });
@@ -74,6 +77,7 @@ export function webpackAdapter(core: Core, framework: "webpack" | "rspack"): Hoo
     const { options } = compiler;
     core.root = options.context ?? process.cwd();
     options.entry = { app: { import: [APP_ID] } };
+    options.target ??= ["web", "es2018"];
     options.output.filename = "[name].js";
     // webpack's development mode defaults to `eval` source maps, mini
     // programs have no `eval`.

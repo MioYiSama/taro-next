@@ -58,7 +58,7 @@ export class EventTarget {
     opts.signal?.addEventListener("abort", () =>
       this.removeEventListener(type, callback, { capture }),
     );
-    if (list.length === 1) this.$listenersChanged();
+    if (list.length === 1) this.$listenersChanged(type);
   }
 
   removeEventListener(
@@ -75,7 +75,7 @@ export class EventTarget {
     list.splice(index, 1);
     if (!list.length) {
       this.$listeners!.delete(type);
-      this.$listenersChanged();
+      this.$listenersChanged(type);
     }
   }
 
@@ -91,7 +91,8 @@ export class EventTarget {
     }
     if (!event.$stop) {
       event.eventPhase = 2;
-      invoke(this, event, 2);
+      invoke(this, event, 1);
+      if (!event.$stopImmediate) invoke(this, event, 3);
     }
     if (event.bubbles) {
       for (let i = 1; i < path.length && !event.$stop; i++) {
@@ -111,7 +112,7 @@ export class EventTarget {
   }
 
   /** @internal Called when the set of listened event types changes. */
-  $listenersChanged(): void {}
+  $listenersChanged(_type: string): void {}
 
   /** @internal Whether any listener is registered, optionally for one type only. */
   $hasListeners(type?: string): boolean {
@@ -121,7 +122,7 @@ export class EventTarget {
   }
 }
 
-function invoke(target: EventTarget, event: Event, phase: 1 | 2 | 3): void {
+function invoke(target: EventTarget, event: Event, phase: 1 | 3): void {
   const list = target.$listeners?.get(event.type);
   if (!list) return;
   event.$currentTarget = target;

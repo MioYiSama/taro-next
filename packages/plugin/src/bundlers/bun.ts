@@ -9,7 +9,7 @@ import {
   GLOBALS_MODULE,
   type Hooks,
   idFilter,
-  writeWxss,
+  writeOutputs,
 } from "../core";
 import { SCRIPT, inject, langOf } from "../inject";
 
@@ -18,6 +18,7 @@ const FILTER = idFilter(APP_ID, GLOBALS_ID);
 
 export function bunAdapter(core: Core): Hooks {
   return {
+    transform: undefined,
     bun: {
       setup(build) {
         const { config } = build;
@@ -28,6 +29,10 @@ export function bunAdapter(core: Core): Hooks {
         config.naming = "[name].[ext]";
         config.format = "cjs";
         config.splitting = false;
+        config.define = {
+          "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV ?? "production"),
+          ...config.define,
+        };
 
         build.onResolve({ filter: FILTER }, (args) => ({ path: args.path, namespace: NAMESPACE }));
         build.onLoad({ filter: /.*/, namespace: NAMESPACE }, (args) => ({
@@ -37,15 +42,19 @@ export function bunAdapter(core: Core): Hooks {
         // Bun has no `inject`, and its plugins see the sources.
         build.onLoad({ filter: SCRIPT }, async (args) => {
           const lang = langOf(args.path)!;
-          const result = await inject(
-            await fs.promises.readFile(args.path, "utf8"),
-            args.path,
-            lang,
-          );
+          const code = await fs.promises.readFile(args.path, "utf8");
+          // Bun only exposes JS/TS here; `components` covers other source formats.
+          core.scan(args.path, code);
+          const result = await inject(code, args.path, lang);
           return result ? { contents: result.code, loader: lang } : undefined;
         });
         build.onEnd((result) => {
-          if (result.success) writeWxss(core, outdir);
+          if (!result.success) return;
+          const cssPath = path.join(outdir, "app.css");
+          const css = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, "utf8") : "";
+          fs.rmSync(cssPath, { force: true });
+          fs.rmSync(`${cssPath}.map`, { force: true });
+          writeOutputs(core, outdir, css);
         });
       },
     },

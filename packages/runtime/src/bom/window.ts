@@ -7,7 +7,15 @@ import {
   HTMLMediaElement,
   SVGElement,
 } from "../dom/element";
-import { CustomEvent, ErrorEvent, Event, HashChangeEvent, PopStateEvent } from "../dom/event";
+import {
+  CustomEvent,
+  ErrorEvent,
+  Event,
+  FocusEvent,
+  HashChangeEvent,
+  KeyboardEvent,
+  PopStateEvent,
+} from "../dom/event";
 import {
   EventTarget,
   GLOBAL_EVENT_HANDLERS,
@@ -17,9 +25,12 @@ import {
 import { DocumentFragment } from "../dom/fragment";
 import { Node } from "../dom/node";
 import { CSSStyleDeclaration } from "../dom/style";
+import { VIEW_EVENTS, viewEvents } from "../dom/view-events";
 import { setRoot } from "../update";
-import { History, Location } from "./history";
+import { History, Location, searchOf } from "./history";
+import { MediaQueryList, matchMedia, updateMediaQueries } from "./media";
 import { Storage, memoryBackend, wxBackend } from "./storage";
+import { appBaseInfo, deviceInfo, resetSystemInfo, windowInfo } from "./system";
 
 const hasWx = typeof wx !== "undefined";
 const timeOrigin = Date.now();
@@ -65,18 +76,6 @@ export function getComputedStyle(element: Element): CSSStyleDeclaration {
   return element.style;
 }
 
-let windowInfo: WechatMiniprogram.WindowInfo | null = null;
-function getWindowInfo(): Partial<WechatMiniprogram.WindowInfo> {
-  if (!hasWx) return {};
-  return (windowInfo ??= wx.getWindowInfo());
-}
-
-let appBaseInfo: WechatMiniprogram.AppBaseInfo | null = null;
-function getAppBaseInfo(): Partial<WechatMiniprogram.AppBaseInfo> {
-  if (!hasWx) return {};
-  return (appBaseInfo ??= wx.getAppBaseInfo());
-}
-
 export class Navigator {
   readonly cookieEnabled = false;
   readonly onLine = true;
@@ -84,7 +83,7 @@ export class Navigator {
   readonly maxTouchPoints = 10;
 
   get language(): string {
-    return (getAppBaseInfo().language ?? "zh_CN").replace("_", "-");
+    return (appBaseInfo().language ?? "zh_CN").replace("_", "-");
   }
 
   get languages(): string[] {
@@ -92,121 +91,15 @@ export class Navigator {
   }
 
   get platform(): string {
-    return hasWx ? wx.getDeviceInfo().platform : "";
+    return deviceInfo().platform ?? "";
   }
 
   get userAgent(): string {
     if (!hasWx) return "MiniProgram";
-    const device = wx.getDeviceInfo();
-    const base = getAppBaseInfo();
+    const device = deviceInfo();
+    const base = appBaseInfo();
     return `Mozilla/5.0 (${device.system}; ${device.model}) AppleWebKit/537.36 (KHTML, like Gecko) MicroMessenger/${base.version} MiniProgramEnv/${device.platform}`;
   }
-}
-
-/** Evaluates a media query against the window size and the system theme. */
-function evaluateMedia(query: string): boolean {
-  const info = getWindowInfo();
-  const width = info.windowWidth ?? 0;
-  const height = info.windowHeight ?? 0;
-  return query.split(",").some((part) =>
-    part
-      .trim()
-      .toLowerCase()
-      .split(/\s+and\s+/)
-      .every((condition) => {
-        let negate = false;
-        let c = condition.trim();
-        if (c.startsWith("not ")) {
-          negate = true;
-          c = c.slice(4).trim();
-        }
-        c = c.replace(/^only\s+/, "");
-        let result: boolean;
-        const feature = /^\(\s*([a-z-]+)\s*(?::\s*([^)]+?))?\s*\)$/.exec(c);
-        if (!feature) {
-          result = c === "all" || c === "screen";
-        } else {
-          const [, name, value = ""] = feature;
-          const px = parseFloat(value);
-          switch (name) {
-            case "min-width":
-              result = width >= px;
-              break;
-            case "max-width":
-              result = width <= px;
-              break;
-            case "min-height":
-              result = height >= px;
-              break;
-            case "max-height":
-              result = height <= px;
-              break;
-            case "orientation":
-              result = (width > height ? "landscape" : "portrait") === value;
-              break;
-            case "prefers-color-scheme":
-              result = (getAppBaseInfo().theme ?? "light") === value;
-              break;
-            case "prefers-reduced-motion":
-              result = value === "no-preference";
-              break;
-            case "hover":
-            case "any-hover":
-              result = value === "none";
-              break;
-            case "pointer":
-            case "any-pointer":
-              result = value === "coarse";
-              break;
-            default:
-              result = false;
-          }
-        }
-        return negate ? !result : result;
-      }),
-  );
-}
-
-export class MediaQueryList extends EventTarget {
-  readonly media: string;
-  onchange: ((event: Event) => void) | null = null;
-  /** @internal */ $matches: boolean;
-
-  constructor(media: string) {
-    super();
-    this.media = media;
-    this.$matches = evaluateMedia(media);
-  }
-
-  get matches(): boolean {
-    return this.$matches;
-  }
-
-  addListener(listener: (event: Event) => void): void {
-    this.addEventListener("change", listener);
-  }
-
-  removeListener(listener: (event: Event) => void): void {
-    this.removeEventListener("change", listener);
-  }
-
-  /** @internal Re-evaluate and fire `change` when the result flipped. */
-  $update(): void {
-    const matches = evaluateMedia(this.media);
-    if (matches === this.$matches) return;
-    this.$matches = matches;
-    const event = Object.assign(new Event("change"), { matches, media: this.media });
-    this.onchange?.(event);
-    this.dispatchEvent(event);
-  }
-}
-
-const mediaQueries = new Set<MediaQueryList>();
-
-export function matchMedia(query: string): MediaQueryList {
-  const list = new MediaQueryList(query);
-  mediaQueries.add(list);
-  return list;
 }
 
 /**
@@ -231,6 +124,8 @@ export class Window extends EventTarget {
   readonly Event = Event;
   readonly CustomEvent = CustomEvent;
   readonly ErrorEvent = ErrorEvent;
+  readonly FocusEvent = FocusEvent;
+  readonly KeyboardEvent = KeyboardEvent;
   readonly PopStateEvent = PopStateEvent;
   readonly HashChangeEvent = HashChangeEvent;
   readonly EventTarget = EventTarget;
@@ -267,6 +162,10 @@ export class Window extends EventTarget {
     this.document.defaultView = this;
     this.history = new History(this);
     this.$location = new Location(this.history);
+    if (typeof wx !== "undefined" && typeof wx.getLaunchOptionsSync === "function") {
+      const search = searchOf(wx.getLaunchOptionsSync().query);
+      if (search) this.history.replaceState(null, "", search);
+    }
   }
 
   get window(): this {
@@ -298,27 +197,27 @@ export class Window extends EventTarget {
   }
 
   get innerWidth(): number {
-    return getWindowInfo().windowWidth ?? 0;
+    return windowInfo().windowWidth ?? 0;
   }
 
   get innerHeight(): number {
-    return getWindowInfo().windowHeight ?? 0;
+    return windowInfo().windowHeight ?? 0;
   }
 
   get outerWidth(): number {
-    return getWindowInfo().screenWidth ?? 0;
+    return windowInfo().screenWidth ?? 0;
   }
 
   get outerHeight(): number {
-    return getWindowInfo().screenHeight ?? 0;
+    return windowInfo().screenHeight ?? 0;
   }
 
   get devicePixelRatio(): number {
-    return getWindowInfo().pixelRatio ?? 1;
+    return windowInfo().pixelRatio ?? 1;
   }
 
   get screen() {
-    const info = getWindowInfo();
+    const info = windowInfo();
     const width = info.screenWidth ?? 0;
     const height = info.screenHeight ?? 0;
     return {
@@ -367,20 +266,21 @@ export class Window extends EventTarget {
 
   /** @internal The system info changed (`onResize`). */
   $resize(): void {
-    windowInfo = null;
-    for (const list of mediaQueries) list.$update();
+    resetSystemInfo();
+    updateMediaQueries();
     this.dispatchEvent(new Event("resize"));
   }
 
   /** @internal The system theme changed. */
   $themeChange(): void {
-    appBaseInfo = null;
-    for (const list of mediaQueries) list.$update();
+    resetSystemInfo();
+    updateMediaQueries();
   }
 
   /** Views bind the events listened to on the window too, see `Element.$nodeName`. */
-  override $listenersChanged(): void {
-    this.document.$refreshBindings();
+  override $listenersChanged(type: string): void {
+    if (!(type in VIEW_EVENTS)) return;
+    this.document.$refreshBindings(viewEvents(this));
   }
 }
 

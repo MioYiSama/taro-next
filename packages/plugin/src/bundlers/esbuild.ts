@@ -1,16 +1,16 @@
 /** esbuild: one `app.js`, the CSS esbuild bundles next to it (`app.css`) turned into `app.wxss`. */
+import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {
   APP_ID,
-  APP_WXSS,
   type Core,
   GLOBALS_ID,
   GLOBALS_MODULE,
   type Hooks,
   NAME,
   idFilter,
-  writeWxss,
+  writeOutputs,
 } from "../core";
 
 const NAMESPACE = "taro-next";
@@ -19,6 +19,7 @@ const FILTER = idFilter(APP_ID, GLOBALS_ID);
 export function esbuildAdapter(core: Core): Hooks {
   let outdir = "";
   return {
+    transform: undefined,
     esbuild: {
       config(options) {
         if (options.outfile)
@@ -29,9 +30,14 @@ export function esbuildAdapter(core: Core): Hooks {
         options.entryPoints = { app: APP_ID };
         options.entryNames = "[name]";
         options.bundle = true;
+        options.metafile = true;
         options.format = "cjs";
         options.splitting = false;
         options.target ??= "es2018";
+        options.define = {
+          "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV ?? "production"),
+          ...options.define,
+        };
         // Inject files are resolved like imports, including by the plugins.
         options.inject = [...(options.inject ?? []), GLOBALS_ID];
       },
@@ -44,20 +50,33 @@ export function esbuildAdapter(core: Core): Hooks {
         }));
         build.onEnd((result) => {
           if (result.errors.length) return;
-          if (!result.outputFiles) return writeWxss(core, outdir);
+          for (const input of Object.keys(result.metafile?.inputs ?? {})) {
+            if (input.includes(":")) continue;
+            const id = path.resolve(core.root, input);
+            core.scan(id, fs.readFileSync(id, "utf8"));
+          }
+          if (!result.outputFiles) {
+            const cssPath = path.join(outdir, "app.css");
+            const css = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, "utf8") : "";
+            fs.rmSync(cssPath, { force: true });
+            fs.rmSync(`${cssPath}.map`, { force: true });
+            return writeOutputs(core, outdir, css);
+          }
           // `write: false`
           const cssPath = path.join(outdir, "app.css");
           const index = result.outputFiles.findIndex((file) => file.path === cssPath);
           const css = index < 0 ? "" : result.outputFiles.splice(index, 1)[0]!.text;
-          const contents = new TextEncoder().encode(core.wxss(css));
-          result.outputFiles.push({
-            path: path.join(outdir, APP_WXSS),
-            contents,
-            hash: "",
-            get text() {
-              return new TextDecoder().decode(contents);
-            },
-          });
+          for (const [name, source] of Object.entries(core.outputs(css))) {
+            const contents = new TextEncoder().encode(source);
+            result.outputFiles.push({
+              path: path.join(outdir, name),
+              contents,
+              hash: "",
+              get text() {
+                return new TextDecoder().decode(contents);
+              },
+            });
+          }
         });
       },
     },

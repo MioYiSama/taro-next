@@ -9,6 +9,14 @@ import type { EventTarget } from "../dom/event-target";
 
 export const ORIGIN = "http://localhost";
 
+/** Convert a mini program launch or page query to a location search string. */
+export function searchOf(query: Record<string, string>): string {
+  const search = Object.keys(query)
+    .map((key) => `${key}=${query[key]}`)
+    .join("&");
+  return search ? `?${search}` : "";
+}
+
 interface Entry {
   state: unknown;
   pathname: string;

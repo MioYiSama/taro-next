@@ -19,7 +19,12 @@
   </p>
   <button id="increment" onclick={() => count++}>Increment</button>
 
-  <input id="todo-input" placeholder="New todo" bind:value={text} onconfirm={addTodo} />
+  <input
+    id="todo-input"
+    placeholder="New todo"
+    bind:value={text}
+    onkeydown={(e) => e.key === "Enter" && addTodo()}
+  />
   <ul>
     {#each todos as todo, index (todo)}
       <li onclick={() => todos.splice(index, 1)}>{todo}</li>

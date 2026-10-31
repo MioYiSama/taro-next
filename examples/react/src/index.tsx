@@ -1,5 +1,4 @@
-import { start } from "@taro-next/runtime";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import "./index.css";
@@ -22,19 +21,12 @@ function App() {
   const [count, setCount] = useState(0);
   const [text, setText] = useState("");
   const [todos, setTodos] = useState(["Learn taro-next", "Render with react"]);
-  const input = useRef<HTMLInputElement>(null);
 
-  // React only knows DOM events: listen to the mini program's `confirm` itself.
-  useEffect(() => {
-    const element = input.current!;
-    const addTodo = () => {
-      if (!text) return;
-      setTodos([...todos, text]);
-      setText("");
-    };
-    element.addEventListener("confirm", addTodo);
-    return () => element.removeEventListener("confirm", addTodo);
-  }, [text, todos]);
+  const addTodo = () => {
+    if (!text) return;
+    setTodos([...todos, text]);
+    setText("");
+  };
 
   return (
     <div className="app">
@@ -47,11 +39,13 @@ function App() {
       </button>
 
       <input
-        ref={input}
         id="todo-input"
         placeholder="New todo"
         value={text}
         onChange={(e) => setText(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") addTodo();
+        }}
       />
       <ul>
         {todos.map((todo, index) => (
@@ -74,6 +68,4 @@ function App() {
   );
 }
 
-start((window) => {
-  createRoot(window.document.body).render(<App />);
-});
+createRoot(document.body).render(<App />);

@@ -251,6 +251,9 @@ async function run(dir: string): Promise<Record<string, unknown>> {
 describe.each(Object.keys(BUILDS))("%s", (name) => {
   test.skipIf(name === "bun" && !hasBun)("builds a mini program", { timeout: 60_000 }, async () => {
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), `taro-next-${name}-`));
+    const nodeEnv = process.env.NODE_ENV;
+    // Bundlers without a mode option inherit NODE_ENV; don't compile Vitest's "test" mode.
+    process.env.NODE_ENV = "production";
     try {
       await BUILDS[name]!(outDir);
 
@@ -273,14 +276,25 @@ describe.each(Object.keys(BUILDS))("%s", (name) => {
       const wxss = fs.readFileSync(path.join(outDir, "app.wxss"), "utf8");
       expect(wxss.startsWith(BASE_WXSS)).toBe(true);
       expect(wxss.slice(BASE_WXSS.length)).toMatch(/\.title\s*\{\s*color:\s*(red|#f00)/);
+      expect(wxss).toMatch(/\.h5-div\s*\{\s*margin:\s*10rpx/);
+      expect(wxss).toMatch(/page\s*\{\s*--gap:\s*4rpx/);
+      expect(wxss).toMatch(/view\s*\{\s*box-sizing/);
+
+      const wxml = fs.readFileSync(path.join(outDir, "base.wxml"), "utf8");
+      expect(wxml).toContain("tmpl_0_scroll-view");
+      expect(wxml).not.toContain("tmpl_0_swiper");
 
       const appJs = fs.readFileSync(path.join(outDir, "app.js"), "utf8");
       expect(appJs).not.toMatch(/\beval\(/);
+      expect(appJs).not.toMatch(/process\.env\.NODE_ENV/);
 
       const rendered = JSON.stringify((await run(outDir)).root);
       expect(rendered).toContain("esm injected, cjs injected");
       expect(rendered).toContain("lazy inlined");
+      expect(rendered).toMatch(/mode (production|development)/);
     } finally {
+      if (nodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = nodeEnv;
       fs.rmSync(outDir, { recursive: true, force: true });
     }
   });

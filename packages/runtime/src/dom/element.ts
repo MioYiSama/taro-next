@@ -1,14 +1,16 @@
-import { type AttrDefault, COMPONENTS, HTML_TAGS, attrKey, componentOf } from "../components";
-import { enqueueField } from "../update";
+import { HOVER_KEYS, HTML_TAGS, attrKey, componentOf, kindsOf } from "../components";
+import { config } from "../config";
+import { enqueueField, enqueueReplace } from "../update";
 import { DOMTokenList } from "./class-list";
-import type { Document } from "./document";
 import { Event } from "./event";
-import { type EventTarget, GLOBAL_EVENT_HANDLERS, defineEventHandlers } from "./event-target";
+import { GLOBAL_EVENT_HANDLERS, defineEventHandlers } from "./event-target";
 import type { DocumentFragment } from "./fragment";
 import { SVG_NAMESPACE, serialize, serializeChildren, parseHTML } from "./html";
-import { DOCUMENT_NODE, ELEMENT_NODE, Node } from "./node";
+import { mutationHook } from "./mutation-hook";
+import { ELEMENT_NODE, Node } from "./node";
 import { matches, querySelectorAll } from "./selector";
-import { type CSSStyleDeclaration, createStyle } from "./style";
+import { type CSSStyleDeclaration, createStyle, pxToRpx } from "./style";
+import { CLICK, parentEvents, viewEvents } from "./view-events";
 
 export const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
 
@@ -16,42 +18,6 @@ export interface Attr {
   readonly name: string;
   readonly localName: string;
   readonly value: string;
-}
-
-const defaultsCache = new Map<string, Map<string, AttrDefault>>();
-
-/** Attribute key → default value of a component (memoized). */
-function defaultsOf(component: string): Map<string, AttrDefault> {
-  let defaults = defaultsCache.get(component);
-  if (!defaults) {
-    defaults = new Map();
-    for (const [name, value] of Object.entries(COMPONENTS[component].attrs)) {
-      defaults.set(attrKey(name), value);
-    }
-    defaultsCache.set(component, defaults);
-  }
-  return defaults;
-}
-
-const CLICK = 1;
-const TOUCH = 2;
-const ALL_VIEW_EVENTS = CLICK | TOUCH;
-/** DOM event types of the native events a `view` binds (`tap` is `click`). */
-const VIEW_EVENTS: Record<string, number> = {
-  click: CLICK,
-  touchstart: TOUCH,
-  touchmove: TOUCH,
-  touchend: TOUCH,
-  touchcancel: TOUCH,
-  longpress: TOUCH,
-};
-
-/** {@link VIEW_EVENTS} flags listened to on `target`. */
-function viewEvents(target: EventTarget | null): number {
-  let flags = 0;
-  const listeners = target?.$listeners;
-  if (listeners) for (const type of listeners.keys()) flags |= VIEW_EVENTS[type] ?? 0;
-  return flags;
 }
 
 /** Values of `<input type>` in HTML, see {@link Element.type}. */
@@ -85,16 +51,16 @@ const HTML_INPUT_TYPES = new Set([
  * values (e.g. set by frameworks through `setAttribute`) still work:
  * `""`/`"true"` → `true` for booleans, numeric strings → numbers.
  */
-function coerce(defaultValue: AttrDefault, value: unknown): unknown {
+function coerce(kind: "b" | "n" | "s" | "r" | undefined, value: unknown): unknown {
   if (value == null) return null;
-  switch (typeof defaultValue) {
-    case "boolean":
+  switch (kind) {
+    case "b":
       return value === "false" ? false : value === "" || !!value;
-    case "number":
+    case "n":
       return typeof value === "string" && value.trim() !== "" && Number.isFinite(+value)
         ? +value
         : value;
-    case "string":
+    case "s":
       return typeof value === "number" || typeof value === "boolean" ? String(value) : value;
     default:
       return value;
@@ -106,11 +72,12 @@ export class Element extends Node {
   readonly namespaceURI: string;
   readonly tagName: string;
   /** @internal Mini program component rendering this element. */
-  readonly $component: string;
+  $component: string;
   /** @internal Raw attribute values (`style` lives in {@link $style}). */
   $attrs = new Map<string, unknown>();
   /** @internal */ $style: CSSStyleDeclaration | null = null;
   /** @internal */ $classList: DOMTokenList | null = null;
+  /** @internal */ $dataset: Record<string, string | undefined> | null = null;
   /** @internal Template content of `<template>`. */ $content: DocumentFragment | null = null;
   /** @internal Last node name sent to the view. */ $nn = "";
 
@@ -155,6 +122,9 @@ export class Element extends Node {
       return;
     }
     if (this.$attrs.get(name) === value && this.$attrs.has(name)) return;
+    if (mutationHook) mutationHook({
+      type: "attributes", target: this, attributeName: name, oldValue: this.getAttribute(name),
+    });
     this.$attrs.set(name, value);
     this.$attrChanged(name);
   }
@@ -165,11 +135,62 @@ export class Element extends Node {
       if (this.$style?.length) this.$style.cssText = "";
       return;
     }
-    if (this.$attrs.delete(name)) this.$attrChanged(name);
+    if (!this.$attrs.has(name)) return;
+    if (mutationHook) mutationHook({
+      type: "attributes", target: this, attributeName: name, oldValue: this.getAttribute(name),
+    });
+    this.$attrs.delete(name);
+    this.$attrChanged(name);
   }
 
   hasAttribute(name: string): boolean {
     return this.getAttribute(name) !== null;
+  }
+
+  setAttributeNS(_namespace: string | null, qualifiedName: string, value: unknown): void {
+    if (qualifiedName === "style") {
+      this.style.cssText = String(value);
+      return;
+    }
+    if (this.$attrs.get(qualifiedName) === value && this.$attrs.has(qualifiedName)) return;
+    if (mutationHook) mutationHook({
+      type: "attributes", target: this, attributeName: qualifiedName,
+      oldValue: this.$attrs.has(qualifiedName) ? String(this.$attrs.get(qualifiedName)) : null,
+    });
+    this.$attrs.set(qualifiedName, value);
+    this.$attrChanged(qualifiedName);
+  }
+
+  /** @internal Resolve a local attribute name without HTML case folding. */
+  $nameNS(localName: string): string | null {
+    for (const name of this.$attrs.keys()) {
+      if (name === localName || name.endsWith(`:${localName}`)) return name;
+    }
+    return localName === "style" && this.$style?.length ? "style" : null;
+  }
+
+  getAttributeNS(_namespace: string | null, localName: string): string | null {
+    const name = this.$nameNS(localName);
+    if (name === null) return null;
+    return name === "style" ? this.$style!.cssText : String(this.$attrs.get(name));
+  }
+
+  removeAttributeNS(_namespace: string | null, localName: string): void {
+    const name = this.$nameNS(localName);
+    if (name === null) return;
+    if (name === "style") {
+      this.$style!.cssText = "";
+      return;
+    }
+    if (mutationHook) mutationHook({
+      type: "attributes", target: this, attributeName: name, oldValue: String(this.$attrs.get(name)),
+    });
+    this.$attrs.delete(name);
+    this.$attrChanged(name);
+  }
+
+  hasAttributeNS(namespace: string | null, localName: string): boolean {
+    return this.getAttributeNS(namespace, localName) !== null;
   }
 
   toggleAttribute(name: string, force?: boolean): boolean {
@@ -191,7 +212,7 @@ export class Element extends Node {
   get attributes(): Attr[] {
     const list: Attr[] = [];
     for (const [name, value] of this.$attrs)
-      list.push({ name, localName: name, value: String(value) });
+      list.push({ name, localName: name.slice(name.indexOf(":") + 1), value: String(value) });
     if (this.$style?.length)
       list.push({ name: "style", localName: "style", value: this.$style.cssText });
     return list;
@@ -199,12 +220,20 @@ export class Element extends Node {
 
   /** @internal */
   $attrChanged(name: string): void {
-    if (name === "id") enqueueField(this, "uid");
+    if (name === "type" && this.localName === "input") {
+      const component = componentOf(this.localName, this.getAttribute("type"));
+      if (component !== this.$component) {
+        this.$component = component;
+        enqueueReplace(this);
+      }
+      enqueueField(this, "password");
+    }
+    if (name === "id") enqueueField(this, "id");
     else if (name === "class") enqueueField(this, "cl");
     else {
       const key = attrKey(name);
-      if (key === "catchmove") this.$refreshNodeName();
-      else if (defaultsOf(this.$component).has(key)) enqueueField(this, key);
+      if (key === "catchmove" || HOVER_KEYS.has(key)) this.$refreshNodeName();
+      if (kindsOf(this.$component).attrs.has(key)) enqueueField(this, key);
     }
   }
 
@@ -255,8 +284,9 @@ export class Element extends Node {
   }
 
   get dataset(): Record<string, string | undefined> {
+    if (this.$dataset) return this.$dataset;
     const toAttr = (key: string) => `data-${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
-    return new Proxy({} as Record<string, string | undefined>, {
+    return (this.$dataset = new Proxy({} as Record<string, string | undefined>, {
       get: (_, key) =>
         typeof key === "string" ? (this.getAttribute(toAttr(key)) ?? undefined) : undefined,
       set: (_, key, value) => {
@@ -276,7 +306,7 @@ export class Element extends Node {
         typeof key === "string" && this.hasAttribute(toAttr(key))
           ? { enumerable: true, configurable: true, value: this.getAttribute(toAttr(key)) }
           : undefined,
-    });
+    }));
   }
 
   /**
@@ -292,7 +322,7 @@ export class Element extends Node {
   }
 
   get checked(): boolean {
-    return coerce(false, this.$attrs.get("checked")) === true;
+    return coerce("b", this.$attrs.get("checked")) === true;
   }
 
   set checked(value: boolean) {
@@ -324,17 +354,15 @@ export class Element extends Node {
   }
 
   get nextElementSibling(): Element | null {
-    const siblings = this.parentNode?.childNodes ?? [];
-    for (let i = siblings.indexOf(this) + 1; i > 0 && i < siblings.length; i++) {
-      if (siblings[i].nodeType === ELEMENT_NODE) return siblings[i] as Element;
+    for (let node = this.$next; node; node = node.$next) {
+      if (node.nodeType === ELEMENT_NODE) return node as Element;
     }
     return null;
   }
 
   get previousElementSibling(): Element | null {
-    const siblings = this.parentNode?.childNodes ?? [];
-    for (let i = siblings.indexOf(this) - 1; i >= 0; i--) {
-      if (siblings[i].nodeType === ELEMENT_NODE) return siblings[i] as Element;
+    for (let node = this.$prev; node; node = node.$prev) {
+      if (node.nodeType === ELEMENT_NODE) return node as Element;
     }
     return null;
   }
@@ -424,11 +452,11 @@ export class Element extends Node {
 
   /** Focuses `input`/`textarea` through their `focus` attribute. */
   focus(): void {
-    if (defaultsOf(this.$component).has("focus")) this.setAttribute("focus", true);
+    if (kindsOf(this.$component).attrs.has("focus")) this.setAttribute("focus", true);
   }
 
   blur(): void {
-    if (defaultsOf(this.$component).has("focus")) this.setAttribute("focus", false);
+    if (kindsOf(this.$component).attrs.has("focus")) this.setAttribute("focus", false);
   }
 
   click(): void {
@@ -444,9 +472,11 @@ export class Element extends Node {
     }
   }
 
-  override $refreshBindings(): void {
-    this.$refreshNodeName();
-    super.$refreshBindings();
+  override $refreshBindings(inherited: number): void {
+    if (this.$component === "view" && this.$connected && this.$nodeName(inherited) !== this.$nn) {
+      enqueueField(this, "nn");
+    }
+    super.$refreshBindings(inherited);
   }
 
   /**
@@ -458,19 +488,17 @@ export class Element extends Node {
    * the document and window where delegating frameworks (Solid, Svelte)
    * listen.
    */
-  $nodeName(): string {
+  $nodeName(inherited?: number): string {
     const component = this.$component;
     if (component !== "view") return component;
+    let hover = false;
     for (const name of this.$attrs.keys()) {
-      if (attrKey(name) === "catchmove") return "catch-view";
+      const key = attrKey(name);
+      if (key === "catchmove") return "catch-view";
+      if (HOVER_KEYS.has(key)) hover = true;
     }
-    let bound = viewEvents(this);
-    let top: Node = this;
-    for (let node = this.parentNode; node && bound !== ALL_VIEW_EVENTS; node = node.parentNode) {
-      bound |= viewEvents(node);
-      top = node;
-    }
-    if (top.nodeType === DOCUMENT_NODE) bound |= viewEvents((top as Document).defaultView);
+    if (hover) return "view";
+    const bound = (inherited ?? parentEvents(this)) | viewEvents(this);
     if (!bound) return "static-view";
     return bound === CLICK ? "click-view" : "view";
   }
@@ -483,42 +511,68 @@ export class Element extends Node {
     return base ? `${base} ${cls}` : String(cls);
   }
 
+  /** @internal HTML input attributes translated for the native input. */
+  inputField(key: string): unknown {
+    const type = this.getAttribute("type")?.toLowerCase() ?? "text";
+    if (key === "password") {
+      return this.$attrs.has("password")
+        ? coerce("b", this.$attrs.get("password"))
+        : type === "password";
+    }
+    if (type === "number") return "digit";
+    return /^(text|idcard|digit|safe-password|nickname)$/.test(type) ? type : "text";
+  }
+
   $field(key: string): unknown {
     switch (key) {
       case "nn":
         return (this.$nn = this.$nodeName());
-      case "uid":
-        return this.id || this.sid;
+      case "id":
+        return this.id;
       case "cl":
         return this.$class();
-      case "st":
-        return this.$style?.cssText ?? "";
+      case "st": {
+        const style = this.$style?.cssText ?? "";
+        return config.designWidth > 0 ? pxToRpx(style, config.designWidth) : style;
+      }
     }
-    const defaults = defaultsOf(this.$component);
+    if (this.$component === "input" && (key === "type" || key === "password")) {
+      return this.inputField(key);
+    }
+    const attrs = kindsOf(this.$component).attrs;
     for (const [name, value] of this.$attrs) {
-      if (attrKey(name) === key) return coerce(defaults.get(key)!, value);
+      if (attrKey(name) === key) return coerce(attrs.get(key), value);
     }
     return null;
   }
 
-  $serialize(): Record<string, unknown> {
+  $serialize(inherited = parentEvents(this)): Record<string, unknown> {
     const data: Record<string, unknown> = {
-      nn: (this.$nn = this.$nodeName()),
+      nn: (this.$nn = this.$nodeName(inherited)),
       sid: this.sid,
-      uid: this.id || this.sid,
     };
+    const id = this.id;
+    if (id) data.id = id;
     const cls = this.$class();
     if (cls) data.cl = cls;
     const style = this.$style?.cssText;
-    if (style) data.st = style;
-    const defaults = defaultsOf(this.$component);
+    if (style) data.st = config.designWidth > 0 ? pxToRpx(style, config.designWidth) : style;
+    const { attrs, leaf } = kindsOf(this.$component);
+    const input = this.$component === "input";
     for (const [name, value] of this.$attrs) {
       const key = attrKey(name);
-      const defaultValue = defaults.get(key);
-      if (defaultValue !== undefined) data[key] = coerce(defaultValue, value);
+      if (input && (key === "type" || key === "password")) continue;
+      const kind = attrs.get(key);
+      if (kind !== undefined) data[key] = coerce(kind, value);
     }
-    if (COMPONENTS[this.$component].children && this.childNodes.length) {
-      data.cn = this.childNodes.map((child) => child.$serialize());
+    if (input) {
+      if (this.$attrs.has("type")) data.type = this.inputField("type");
+      const password = this.inputField("password");
+      if (this.$attrs.has("password") || password) data.password = password;
+    }
+    if (!leaf && this.childNodes.length) {
+      const mask = inherited | viewEvents(this);
+      data.cn = this.childNodes.map((child) => child.$serialize(mask));
     }
     return data;
   }
@@ -527,6 +581,7 @@ export class Element extends Node {
     const doc = this.$doc();
     const clone = doc.createElementNS(this.namespaceURI, this.localName);
     for (const [name, value] of this.$attrs) clone.$attrs.set(name, value);
+    clone.$component = componentOf(clone.localName, clone.getAttribute("type"));
     if (this.$style?.length) clone.style.cssText = this.$style.cssText;
     if (this.$content) clone.content!.appendChild(this.$content.cloneNode(true));
     return clone;

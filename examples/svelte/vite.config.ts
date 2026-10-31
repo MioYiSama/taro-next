@@ -6,9 +6,6 @@ export default defineConfig({
   plugins: [
     svelte(),
     taro({
-      projectConfig: {
-        appid: "wx1234",
-      },
       appConfig: {
         window: {
           navigationBarTextStyle: "black",
@@ -16,7 +13,6 @@ export default defineConfig({
           navigationBarBackgroundColor: "#ffffff",
         },
       },
-      pageConfig: {},
     }),
   ],
 });

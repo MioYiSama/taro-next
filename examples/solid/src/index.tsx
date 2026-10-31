@@ -1,4 +1,3 @@
-import { start } from "@taro-next/runtime";
 import { createSignal, For, Show } from "solid-js";
 import { render } from "solid-js/web";
 
@@ -28,6 +27,12 @@ function App() {
   const [text, setText] = createSignal("");
   const [todos, setTodos] = createSignal(["Learn taro-next", "Render with solid"]);
 
+  const addTodo = () => {
+    if (!text()) return;
+    setTodos([...todos(), text()]);
+    setText("");
+  };
+
   return (
     <div class="app">
       <h1>taro-next</h1>
@@ -43,10 +48,8 @@ function App() {
         placeholder="New todo"
         value={text()}
         onInput={(e) => setText(e.currentTarget.value)}
-        onConfirm={() => {
-          if (!text()) return;
-          setTodos([...todos(), text()]);
-          setText("");
+        onKeyDown={(e) => {
+          if (e.key === "Enter") addTodo();
         }}
       />
       <ul>
@@ -68,6 +71,4 @@ function App() {
   );
 }
 
-start((window) => {
-  render(() => <App />, window.document.body);
-});
+render(() => <App />, document.body);

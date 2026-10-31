@@ -1,4 +1,4 @@
-export { start, type StartOptions } from "./app";
+export { configure, type ConfigureOptions } from "./app";
 export { nextTick } from "./update";
 
 // BOM / DOM globals. The build plugin injects these in place of free references
@@ -11,8 +11,6 @@ export {
   history,
   localStorage,
   location,
-  matchMedia,
-  MediaQueryList,
   Navigator,
   navigator,
   performance,
@@ -25,6 +23,7 @@ export {
   Window,
 } from "./bom/window";
 export { History, Location } from "./bom/history";
+export { matchMedia, MediaQueryList } from "./bom/media";
 export { Storage } from "./bom/storage";
 export { CharacterData, Comment, Text } from "./dom/character-data";
 export { Document } from "./dom/document";
@@ -39,7 +38,9 @@ export {
   CustomEvent,
   ErrorEvent,
   Event,
+  FocusEvent,
   HashChangeEvent,
+  KeyboardEvent,
   MiniProgramEvent,
   type MpEvent,
   PopStateEvent,
@@ -48,5 +49,6 @@ export {
 export { EventTarget } from "./dom/event-target";
 export { DocumentFragment } from "./dom/fragment";
 export { Node } from "./dom/node";
+export { MutationObserver } from "./dom/mutation-observer";
 export { CSSStyleDeclaration } from "./dom/style";
 export { DOMTokenList } from "./dom/class-list";

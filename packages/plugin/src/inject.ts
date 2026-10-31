@@ -21,14 +21,20 @@ export function langOf(id: string): Lang | null {
  * TypeScript is compiled to JavaScript (types are gone, so are imports only
  * used as types), JSX is preserved for the bundler.
  */
-export async function inject(code: string, id: string, lang: Lang) {
-  if (!MENTIONS.test(code)) return null;
+export async function inject(
+  code: string,
+  id: string,
+  lang: Lang,
+  define?: Record<string, string>,
+) {
+  if (!MENTIONS.test(code) && !(define && /\bprocess\.env\.NODE_ENV\b/.test(code))) return null;
   // Loaded on demand: most bundlers have an `inject` of their own.
   const { transformSync } = await import("oxc-transform");
   const result = transformSync(id, code, {
     lang,
     jsx: "preserve",
     inject: INJECT,
+    define,
     sourcemap: true,
   });
   if (result.errors.length) {

@@ -16,6 +16,7 @@ export class Document extends Node {
   readonly readyState = "complete";
   visibilityState: "visible" | "hidden" = "visible";
   /** @internal */ $title = "";
+  /** @internal */ $activeElement: Element | null = null;
 
   constructor() {
     super(null);
@@ -44,7 +45,7 @@ export class Document extends Node {
   }
 
   get activeElement(): Element {
-    return this.body;
+    return this.$activeElement?.isConnected ? this.$activeElement : this.body;
   }
 
   /** Setting the title updates the navigation bar. */

@@ -6,7 +6,6 @@ import type { Plugin as RollupPlugin, RenderedChunk } from "rollup";
 import {
   APP_ID,
   APP_JS,
-  APP_WXSS,
   type Core,
   type Hooks,
   GLOBALS_ID,
@@ -44,6 +43,7 @@ const join =
   };
 
 export function rollupAdapter(core: Core, framework: "vite" | "rolldown" | "rollup"): Hooks {
+  const mode = JSON.stringify(process.env.NODE_ENV ?? "production");
   // `this.resolve` follows the bundler's resolution from the project root, so
   // modules that can't see the runtime themselves (pnpm-isolated
   // dependencies) still get the same instance.
@@ -66,7 +66,9 @@ export function rollupAdapter(core: Core, framework: "vite" | "rolldown" | "roll
         delete bundle[fileName];
       }
     }
-    this.emitFile({ type: "asset", fileName: APP_WXSS, source: core.wxss(css) });
+    for (const [fileName, source] of Object.entries(core.outputs(css))) {
+      this.emitFile({ type: "asset", fileName, source });
+    }
   }
 
   const output = { format: "cjs", entryFileNames: "[name].js" } as const;
@@ -116,7 +118,12 @@ export function rollupAdapter(core: Core, framework: "vite" | "rolldown" | "roll
             return {
               ...input,
               input: { app: APP_ID },
-              transform: { ...input.transform, inject: { ...input.transform?.inject, ...INJECT } },
+              transform: {
+                ...input.transform,
+                inject: { ...input.transform?.inject, ...INJECT },
+                define: { "process.env.NODE_ENV": mode, ...input.transform?.define },
+                target: input.transform?.target ?? "es2018",
+              },
             };
           },
           outputOptions(options) {
@@ -131,7 +138,7 @@ export function rollupAdapter(core: Core, framework: "vite" | "rolldown" | "roll
       // JavaScript the other plugins compile (TypeScript, CommonJS, ...).
       const injectPlugin: RollupPlugin = {
         name: `${NAME}:inject`,
-        transform: (code, id) => inject(code, id, "js"),
+        transform: (code, id) => inject(code, id, "js", { "process.env.NODE_ENV": mode }),
       };
       return {
         ...hooks,

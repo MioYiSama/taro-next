@@ -1,8 +1,8 @@
 /** Farm: one `app.js` resource, the CSS resources merged into `app.wxss`. */
 import type { Resource } from "@farmfe/core";
 
-import { APP_ID, APP_JS, APP_WXSS, type Core, type Hooks, virtualModules } from "../core";
-import { SCRIPT, inject, langOf } from "../inject";
+import { APP_ID, APP_JS, type Core, type Hooks, virtualModules } from "../core";
+import { inject, langOf } from "../inject";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -35,8 +35,12 @@ export function farmAdapter(core: Core): Hooks {
     ...virtualModules(core, `./${APP_ID}`),
     // Farm compiles TypeScript and JSX after the plugins.
     transform: {
-      filter: { id: SCRIPT },
-      handler: (code, id) => inject(code, id, langOf(id)!),
+      filter: { id: { exclude: [/^\0/, /\.(css|less|sass|scss|styl|stylus|pcss|postcss)(\?|$)/] } },
+      handler(code, id) {
+        core.scan(id, code);
+        const lang = langOf(id);
+        return lang ? inject(code, id, lang) : null;
+      },
     },
     farm: {
       config(config) {
@@ -46,6 +50,8 @@ export function farmAdapter(core: Core): Hooks {
           compilation: {
             ...compilation,
             input: { app: APP_ID },
+            // Farm defines NODE_ENV from its mode for non-node targets.
+            script: { ...compilation.script, target: compilation.script?.target ?? "es2018" },
             output: {
               ...compilation.output,
               entryFilename: "[entryName].js",
@@ -76,7 +82,9 @@ export function farmAdapter(core: Core): Hooks {
             delete resourcesMap[name];
             delete resourcesMap[`${name}.map`];
           }
-          resourcesMap[APP_WXSS] = resource(APP_WXSS, core.wxss(css));
+          for (const [name, source] of Object.entries(core.outputs(css))) {
+            resourcesMap[name] = resource(name, source);
+          }
           for (const [name, source] of Object.entries(core.files())) {
             resourcesMap[name] = resource(name, source);
           }

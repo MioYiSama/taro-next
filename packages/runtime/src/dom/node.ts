@@ -2,6 +2,8 @@ import { CLEAN, connect, disconnect, enqueueInsert, enqueueRemove } from "../upd
 import type { Document } from "./document";
 import type { Element } from "./element";
 import { EventTarget } from "./event-target";
+import { mutationHook } from "./mutation-hook";
+import { VIEW_EVENTS, parentEvents, viewEvents } from "./view-events";
 
 export const ELEMENT_NODE = 1;
 export const TEXT_NODE = 3;
@@ -23,12 +25,15 @@ export abstract class Node extends EventTarget {
 
   parentNode: Node | null = null;
   readonly childNodes: Node[] = [];
+  /** @internal */ $prev: Node | null = null;
+  /** @internal */ $next: Node | null = null;
   /** Runtime id: `data-sid` in WXML and the `wx:key` of the node. */
   readonly sid = `_${(++sidCounter).toString(36)}`;
 
   /** @internal */ $ownerDocument: Document | null;
   /** @internal Attached to the document. */ $connected = false;
   /** @internal Pending child list update, see `update.ts`. */ $cn = CLEAN;
+  /** @internal Inserts minus removes since the last flush. */ $delta = 0;
   /** @internal Pending field updates, see `update.ts`. */ $fields: Set<string> | null = null;
 
   constructor(ownerDocument: Document | null) {
@@ -58,13 +63,11 @@ export abstract class Node extends EventTarget {
   }
 
   get nextSibling(): Node | null {
-    const siblings = this.parentNode?.childNodes;
-    return siblings ? (siblings[siblings.indexOf(this) + 1] ?? null) : null;
+    return this.$next;
   }
 
   get previousSibling(): Node | null {
-    const siblings = this.parentNode?.childNodes;
-    return siblings ? (siblings[siblings.indexOf(this) - 1] ?? null) : null;
+    return this.$prev;
   }
 
   get nodeValue(): string | null {
@@ -124,18 +127,34 @@ export abstract class Node extends EventTarget {
     const children = this.childNodes;
     const index = ref ? children.indexOf(ref) : children.length;
     children.splice(index, 0, node);
+    node.$prev = children[index - 1] ?? null;
+    node.$next = children[index + 1] ?? null;
+    if (node.$prev) node.$prev.$next = node;
+    if (node.$next) node.$next.$prev = node;
     node.parentNode = this;
     if (this.$connected) {
       connect(node);
       enqueueInsert(this, index);
     }
+    if (mutationHook) mutationHook({
+      type: "childList", target: this, addedNodes: [node],
+      previousSibling: node.$prev, nextSibling: node.$next,
+    });
     return node;
   }
 
   removeChild<T extends Node>(node: T): T {
     const index = this.childNodes.indexOf(node);
     if (index < 0) throw new Error("NotFoundError: the node is not a child of this node");
+    if (mutationHook) mutationHook({
+      type: "childList", target: this, removedNodes: [node],
+      previousSibling: node.$prev, nextSibling: node.$next,
+    });
     this.childNodes.splice(index, 1);
+    if (node.$prev) node.$prev.$next = node.$next;
+    if (node.$next) node.$next.$prev = node.$prev;
+    node.$prev = null;
+    node.$next = null;
     node.parentNode = null;
     if (this.$connected) {
       disconnect(node);
@@ -202,13 +221,15 @@ export abstract class Node extends EventTarget {
   }
 
   /** Views bind the events listened to on them and their ancestors, see `Element.$nodeName`. */
-  override $listenersChanged(): void {
-    this.$refreshBindings();
+  override $listenersChanged(type: string): void {
+    if (!(type in VIEW_EVENTS) || !this.$connected) return;
+    this.$refreshBindings(parentEvents(this));
   }
 
   /** @internal Re-pick the template of the views in this subtree. */
-  $refreshBindings(): void {
-    for (const child of this.childNodes) child.$refreshBindings();
+  $refreshBindings(inherited: number): void {
+    const mask = inherited | viewEvents(this);
+    for (const child of this.childNodes) child.$refreshBindings(mask);
   }
 
   override $eventPath(): EventTarget[] {
@@ -230,7 +251,7 @@ export abstract class Node extends EventTarget {
   abstract $clone(): Node;
 
   /** @internal Serialized form, see `components.ts`. */
-  abstract $serialize(): Record<string, unknown>;
+  abstract $serialize(inherited?: number): Record<string, unknown>;
 
   /** @internal Current value of a serialized field. */
   abstract $field(key: string): unknown;

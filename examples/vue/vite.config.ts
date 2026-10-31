@@ -13,9 +13,6 @@ export default defineConfig({
       },
     }),
     taro({
-      projectConfig: {
-        appid: "wx1234",
-      },
       appConfig: {
         window: {
           navigationBarTextStyle: "black",
@@ -23,7 +20,6 @@ export default defineConfig({
           navigationBarBackgroundColor: "#ffffff",
         },
       },
-      pageConfig: {},
     }),
   ],
 });

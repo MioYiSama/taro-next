@@ -1,5 +1,15 @@
 import { enqueueField } from "../update";
 import type { Element } from "./element";
+import { mutationHook } from "./mutation-hook";
+
+/** Same length conversion and URL skipping as the plugin CSS pipeline. */
+export function pxToRpx(text: string, designWidth: number): string {
+  return text.replace(/[uU][rR][lL]\((?:[^"'()\\]|\\.|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')*\)|(?<![\w.]|[\w.-]-)(-?\d*\.?\d+)px(?![\w-])/g, (match, n) => {
+    if (n === undefined) return match;
+    const value = Number((Number(n) * 750 / designWidth).toFixed(5));
+    return value === 0 ? "0" : `${value}rpx`;
+  });
+}
 
 /** `backgroundColor` → `background-color`, `WebkitTransform` → `-webkit-transform`. */
 function hyphenate(name: string): string {
@@ -56,6 +66,10 @@ export class CSSStyleDeclaration {
   }
 
   set cssText(text: string) {
+    if (mutationHook) mutationHook({
+      type: "attributes", target: this.$element, attributeName: "style",
+      oldValue: this.length ? this.cssText : null,
+    });
     this.$properties.clear();
     for (const [name, value] of parseDeclarations(text == null ? "" : String(text))) {
       this.$properties.set(name, value);
@@ -87,13 +101,22 @@ export class CSSStyleDeclaration {
     let text = String(value).trim();
     if (priority === "important") text += " !important";
     if (this.$properties.get(name) === text) return;
+    if (mutationHook) mutationHook({
+      type: "attributes", target: this.$element, attributeName: "style",
+      oldValue: this.length ? this.cssText : null,
+    });
     this.$properties.set(name, text);
     enqueueField(this.$element, "st");
   }
 
   removeProperty(name: string): string {
     const old = this.getPropertyValue(name);
-    if (this.$properties.delete(name)) enqueueField(this.$element, "st");
+    if (!this.$properties.has(name)) return old;
+    if (mutationHook) mutationHook({
+      type: "attributes", target: this.$element, attributeName: "style", oldValue: this.cssText,
+    });
+    this.$properties.delete(name);
+    enqueueField(this.$element, "st");
     return old;
   }
 }

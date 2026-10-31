@@ -4,7 +4,10 @@ import * as path from "node:path";
 import type { UnpluginOptions } from "unplugin";
 
 import pkg from "../package.json";
+import { COMPONENTS } from "./components";
+import { toWxss } from "./css";
 import type { Options } from "./index";
+import { type Scanner, createScanner } from "./scan";
 import {
   BASE_WXSS,
   COMP_JS,
@@ -64,6 +67,8 @@ export const GLOBALS = [
   "Event",
   "CustomEvent",
   "ErrorEvent",
+  "FocusEvent",
+  "KeyboardEvent",
   "PopStateEvent",
   "HashChangeEvent",
   "EventTarget",
@@ -77,6 +82,7 @@ export const GLOBALS = [
   "Comment",
   "DocumentFragment",
   "Document",
+  "MutationObserver",
   "CSSStyleDeclaration",
 ];
 
@@ -98,12 +104,18 @@ export type Hooks = Omit<UnpluginOptions, "name">;
 export interface Core {
   /** Project root: the user entry and the runtime are resolved from it. Set by the adapters. */
   root: string;
+  /** Resolved inline-style and stylesheet design width, or 0 to leave px unchanged. */
+  designWidth: number;
   /** Static mini program files, by output file name. */
   files(): Record<string, string>;
   /** Source of `APP_ID`. */
   appModule(): string;
   /** `app.wxss` from the bundled CSS. */
   wxss(css: string): string;
+  /** Record the native component names present in a source module. */
+  scan(id: string, code: string): void;
+  /** CSS and templates generated from the complete set of scanned modules. */
+  outputs(css: string): Record<string, string>;
 }
 
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
@@ -112,6 +124,8 @@ export function createCore(options: Options | null | undefined): Core {
   const {
     entry = "src/index",
     baseLevel = 16,
+    pxtransform = {},
+    components = [],
     projectConfig = {},
     appConfig = {},
     pageConfig = {},
@@ -119,10 +133,24 @@ export function createCore(options: Options | null | undefined): Core {
   if (!Number.isInteger(baseLevel) || baseLevel < 1) {
     throw new Error(`${NAME}: baseLevel must be a positive integer`);
   }
+  const designWidth = pxtransform === false ? 0 : (pxtransform.designWidth ?? 750);
+  if (pxtransform !== false && (!Number.isFinite(designWidth) || designWidth <= 0)) {
+    throw new Error(`${NAME}: pxtransform.designWidth must be a positive number`);
+  }
+  for (const name of components) {
+    if (!Object.hasOwn(COMPONENTS, name)) throw new Error(`${NAME}: unknown component "${name}"`);
+  }
+  let scanner: Scanner | undefined;
+  const wxml = new Map<string, string>();
   return {
     root: process.cwd(),
+    designWidth,
     files: () => ({
-      "project.config.json": json({ compileType: "miniprogram", ...projectConfig }),
+      "project.config.json": json({
+        compileType: "miniprogram",
+        ...projectConfig,
+        appid: projectConfig.appid ?? "touristappid",
+      }),
       "app.json": json({ pages: [PAGE], ...appConfig }),
       [`${PAGE}.js`]: PAGE_JS,
       [`${PAGE}.json`]: json({
@@ -130,8 +158,6 @@ export function createCore(options: Options | null | undefined): Core {
         usingComponents: { ...pageConfig.usingComponents, comp: "../../comp/comp" },
       }),
       [`${PAGE}.wxml`]: PAGE_WXML,
-      "base.wxml": baseWxml(baseLevel),
-      "utils.wxs": utilsWxs(),
       "comp/comp.js": COMP_JS,
       "comp/comp.json": COMP_JSON,
       "comp/comp.wxml": COMP_WXML,
@@ -140,11 +166,28 @@ export function createCore(options: Options | null | undefined): Core {
       return [
         `import { createAppConfig } from "${RUNTIME}/internal";`,
         `import ${JSON.stringify(path.resolve(this.root, entry))};`,
-        "App(createAppConfig());",
+        `App(createAppConfig({ baseLevel: ${baseLevel}, designWidth: ${designWidth} }));`,
         "",
       ].join("\n");
     },
-    wxss: (css) => BASE_WXSS + css,
+    wxss: (css) => BASE_WXSS + toWxss(css, designWidth),
+    scan(id, code) {
+      (scanner ??= createScanner(this.root)).scan(id, code);
+    },
+    outputs(css) {
+      const used = (scanner ??= createScanner(this.root)).used(components);
+      const key = `${baseLevel}:${[...used].sort().join(",")}`;
+      let template = wxml.get(key);
+      if (template === undefined) {
+        template = baseWxml(baseLevel, used);
+        wxml.set(key, template);
+      }
+      return {
+        [APP_WXSS]: this.wxss(css),
+        "base.wxml": template,
+        "utils.wxs": utilsWxs(used),
+      };
+    },
   };
 }
 
@@ -164,11 +207,9 @@ export const virtualModules = (core: Core, appId = APP_ID): Hooks => ({
   },
 });
 
-/** Turns the `app.css` written next to `app.js` (esbuild, Bun) into `app.wxss`. */
-export function writeWxss(core: Core, outdir: string): void {
-  const cssPath = path.join(outdir, "app.css");
-  const css = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, "utf8") : "";
-  fs.rmSync(cssPath, { force: true });
-  fs.rmSync(`${cssPath}.map`, { force: true });
-  fs.writeFileSync(path.join(outdir, APP_WXSS), core.wxss(css));
+/** Write the stylesheet and pruned templates after all sources have been scanned. */
+export function writeOutputs(core: Core, outdir: string, css: string): void {
+  for (const [name, source] of Object.entries(core.outputs(css))) {
+    fs.writeFileSync(path.join(outdir, name), source);
+  }
 }

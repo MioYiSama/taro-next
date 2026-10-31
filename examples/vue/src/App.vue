@@ -22,7 +22,7 @@ function addTodo() {
     </p>
     <button id="increment" @click="count++">Increment</button>
 
-    <input id="todo-input" v-model="text" placeholder="New todo" @confirm="addTodo" />
+    <input id="todo-input" v-model="text" placeholder="New todo" @keydown.enter="addTodo" />
     <ul>
       <li v-for="(todo, index) in todos" :key="todo" @click="todos.splice(index, 1)">
         {{ todo }}
