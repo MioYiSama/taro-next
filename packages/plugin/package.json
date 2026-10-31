@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "miniprogram-api-typings": "^5.2.3",
     "typescript": "7.1.0-beta",
     "vite-plus": "^1.4.0"
   }
