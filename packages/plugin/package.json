@@ -18,11 +18,15 @@
     "./webpack": "./dist/webpack.mjs",
     "./package.json": "./package.json"
   },
+  "scripts": {
+    "schema": "json2ts -i src/schema/*.schema.json -o src/schema/"
+  },
   "dependencies": {
     "unplugin": "^3.7.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "json-schema-to-typescript": "^16.0.0",
     "miniprogram-api-typings": "^5.2.3",
     "typescript": "7.1.0-beta",
     "vite-plus": "^1.4.0"
