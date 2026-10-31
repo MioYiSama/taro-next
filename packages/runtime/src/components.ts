@@ -376,9 +376,10 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
 
 /**
  * `view` is by far the most frequent node, so it gets cheaper template variants
- * chosen from the element's listeners at serialization time:
- * - `static-view`: no event bindings (element has no listeners)
- * - `click-view`: only `bindtap` (element only listens to `click`)
+ * chosen at serialization time from the touch events (`click` included)
+ * listened to on the element or its ancestors, the document and the window:
+ * - `static-view`: no event bindings (no such listener)
+ * - `click-view`: only `bindtap` (only `click` listeners)
  * - `catch-view`: like `view` but with `catchtouchmove` (`catchMove` attribute),
  *   which stops the page from scrolling
  */

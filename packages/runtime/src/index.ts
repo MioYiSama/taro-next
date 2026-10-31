@@ -5,6 +5,7 @@ export { nextTick } from "./update";
 // (`window`, `document`, ...), which the mini program leaves undefined.
 export {
   cancelAnimationFrame,
+  customElements,
   document,
   getComputedStyle,
   history,
@@ -27,7 +28,13 @@ export { History, Location } from "./bom/history";
 export { Storage } from "./bom/storage";
 export { CharacterData, Comment, Text } from "./dom/character-data";
 export { Document } from "./dom/document";
-export { Element, Element as HTMLElement, Element as SVGElement } from "./dom/element";
+export {
+  Element,
+  HTMLElement,
+  HTMLIFrameElement,
+  HTMLMediaElement,
+  SVGElement,
+} from "./dom/element";
 export {
   CustomEvent,
   ErrorEvent,

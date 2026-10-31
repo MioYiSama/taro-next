@@ -2,7 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 
 import type { Element } from "../src/dom/element";
 import type { Node } from "../src/dom/node";
-import { document } from "../src/index";
+import { document, window } from "../src/index";
 import { flush, setSink } from "../src/update";
 
 /** Apply `setData` paths (`root.cn[0].v`) the way the mini program view does. */
@@ -139,5 +139,41 @@ describe("setData batching", () => {
     flush();
 
     expect(view.patches).toEqual([{ "root.cn": [] }]);
+  });
+
+  test("views bind the touch events listened to on them, their ancestors, the document and the window", () => {
+    document.body.$listeners = null; // Left over by the randomized test.
+    const view = createView();
+    const outer = document.createElement("div");
+    const inner = document.createElement("span");
+    outer.appendChild(inner);
+    document.body.replaceChildren(outer);
+    const listener = () => {};
+    const names = () => {
+      flush();
+      const root = view.data.root as { cn: Array<{ nn: string; cn: Array<{ nn: string }> }> };
+      return [root.cn[0].nn, root.cn[0].cn[0].nn];
+    };
+    expect(names()).toEqual(["static-view", "static-view"]);
+
+    // Not bound by views.
+    document.addEventListener("input", listener);
+    expect(names()).toEqual(["static-view", "static-view"]);
+
+    // Delegation: the tapped node must bind `tap` itself, as native events
+    // don't bubble out of the `comp` component rendering deep subtrees.
+    document.addEventListener("click", listener);
+    expect(names()).toEqual(["click-view", "click-view"]);
+    window.addEventListener("touchstart", listener);
+    expect(names()).toEqual(["view", "view"]);
+    window.removeEventListener("touchstart", listener);
+    document.removeEventListener("click", listener);
+    document.removeEventListener("input", listener);
+    expect(names()).toEqual(["static-view", "static-view"]);
+
+    inner.addEventListener("click", listener);
+    expect(names()).toEqual(["static-view", "click-view"]);
+    outer.addEventListener("touchstart", listener);
+    expect(names()).toEqual(["view", "view"]);
   });
 });

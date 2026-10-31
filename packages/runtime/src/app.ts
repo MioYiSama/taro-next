@@ -64,19 +64,24 @@ const BUBBLES: Record<string, true> = {
  * Keep element state in line with what the user did in the native component,
  * so reading `value`/`checked` works and later updates of the same value are
  * not swallowed by the view's data diff.
+ *
+ * Written through the attributes, not the `value`/`checked` setters: like
+ * user input in a browser, it must bypass setters frameworks install on the
+ * element (React's value tracking, which otherwise sees no change and skips
+ * `onChange`).
  */
 function syncState(element: Element, type: string, detail: Record<string, unknown>): void {
   const attrs = COMPONENTS[element.$component].attrs;
   if ((type === "input" || type === "change") && "value" in detail) {
     const value = detail.value;
-    if (element.$component === "switch") element.checked = !!value;
+    if (element.$component === "switch") element.setAttribute("checked", !!value);
     else if (element.$component === "checkbox-group" || element.$component === "radio-group") {
       const selected = Array.isArray(value) ? value.map(String) : [String(value)];
       const kind = element.$component === "checkbox-group" ? "checkbox" : "radio";
       for (const item of element.querySelectorAll(kind)) {
-        item.checked = selected.includes(String(item.value));
+        item.setAttribute("checked", selected.includes(String(item.value)));
       }
-    } else if ("value" in attrs) element.value = value;
+    } else if ("value" in attrs) element.setAttribute("value", value ?? "");
   }
   if (type === "change" && "current" in detail && "current" in attrs) {
     element.setAttribute("current", detail.current);

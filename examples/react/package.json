@@ -1,0 +1,21 @@
+{
+  "name": "@taro-next/example-react",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vp build",
+    "dev": "vp build --watch --mode development"
+  },
+  "dependencies": {
+    "@taro-next/runtime": "workspace:*",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@taro-next/plugin": "workspace:*",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "7.1.0-beta",
+    "vite-plus": "^1.4.0"
+  }
+}

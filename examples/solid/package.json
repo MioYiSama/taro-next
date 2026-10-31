@@ -1,0 +1,20 @@
+{
+  "name": "@taro-next/example-solid",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vp build",
+    "dev": "vp build --watch --mode development"
+  },
+  "dependencies": {
+    "@taro-next/runtime": "workspace:*",
+    "solid-js": "^1.9.18"
+  },
+  "devDependencies": {
+    "@taro-next/plugin": "workspace:*",
+    "typescript": "7.1.0-beta",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.4.0",
+    "vite-plugin-solid": "^2.11.15",
+    "vite-plus": "^1.4.0"
+  }
+}

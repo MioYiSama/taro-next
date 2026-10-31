@@ -1,0 +1,21 @@
+.app {
+  padding: 24rpx;
+}
+
+.scroller {
+  white-space: nowrap;
+  margin: 24rpx 0;
+}
+
+.chip {
+  display: inline-block;
+  width: 120rpx;
+  line-height: 80rpx;
+  margin-right: 16rpx;
+  text-align: center;
+  background: #eee;
+}
+
+.nested {
+  padding-left: 4rpx;
+}

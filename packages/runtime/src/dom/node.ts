@@ -201,6 +201,16 @@ export abstract class Node extends EventTarget {
     this.append(...nodes);
   }
 
+  /** Views bind the events listened to on them and their ancestors, see `Element.$nodeName`. */
+  override $listenersChanged(): void {
+    this.$refreshBindings();
+  }
+
+  /** @internal Re-pick the template of the views in this subtree. */
+  $refreshBindings(): void {
+    for (const child of this.childNodes) child.$refreshBindings();
+  }
+
   override $eventPath(): EventTarget[] {
     const path: EventTarget[] = [];
     let node: Node | null = this;

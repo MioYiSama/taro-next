@@ -1,8 +1,19 @@
 import { Comment, Text } from "../dom/character-data";
 import { Document } from "../dom/document";
-import { Element } from "../dom/element";
+import {
+  Element,
+  HTMLElement,
+  HTMLIFrameElement,
+  HTMLMediaElement,
+  SVGElement,
+} from "../dom/element";
 import { CustomEvent, ErrorEvent, Event, HashChangeEvent, PopStateEvent } from "../dom/event";
-import { EventTarget, setErrorReporter } from "../dom/event-target";
+import {
+  EventTarget,
+  GLOBAL_EVENT_HANDLERS,
+  defineEventHandlers,
+  setErrorReporter,
+} from "../dom/event-target";
 import { DocumentFragment } from "../dom/fragment";
 import { Node } from "../dom/node";
 import { CSSStyleDeclaration } from "../dom/style";
@@ -198,6 +209,14 @@ export function matchMedia(query: string): MediaQueryList {
   return list;
 }
 
+/**
+ * Custom elements are not supported. Declared as `undefined`, like browser
+ * contexts without the registry, so feature checks (Svelte's, for native
+ * components with a `-` in their name) see it missing instead of throwing a
+ * `ReferenceError`.
+ */
+export const customElements: undefined = undefined;
+
 export class Window extends EventTarget {
   readonly document: Document;
   readonly history: History;
@@ -207,6 +226,7 @@ export class Window extends EventTarget {
   readonly performance = performance;
   readonly closed = false;
   readonly name = "";
+  readonly customElements = customElements;
 
   readonly Event = Event;
   readonly CustomEvent = CustomEvent;
@@ -216,8 +236,10 @@ export class Window extends EventTarget {
   readonly EventTarget = EventTarget;
   readonly Node = Node;
   readonly Element = Element;
-  readonly HTMLElement = Element;
-  readonly SVGElement = Element;
+  readonly HTMLElement = HTMLElement;
+  readonly HTMLIFrameElement = HTMLIFrameElement;
+  readonly HTMLMediaElement = HTMLMediaElement;
+  readonly SVGElement = SVGElement;
   readonly Text = Text;
   readonly Comment = Comment;
   readonly DocumentFragment = DocumentFragment;
@@ -355,7 +377,20 @@ export class Window extends EventTarget {
     appBaseInfo = null;
     for (const list of mediaQueries) list.$update();
   }
+
+  /** Views bind the events listened to on the window too, see `Element.$nodeName`. */
+  override $listenersChanged(): void {
+    this.document.$refreshBindings();
+  }
 }
+
+// `window.onerror` takes different arguments (`OnErrorEventHandler`) and is
+// not supported: listen to `error` instead.
+defineEventHandlers(Window.prototype, [
+  ...GLOBAL_EVENT_HANDLERS.filter((type) => type !== "error"),
+  "hashchange",
+  "popstate",
+]);
 
 export const window = new Window();
 export const document = window.document;

@@ -2,7 +2,7 @@ import { connect } from "../update";
 import { Comment, Text } from "./character-data";
 import { Element, HTML_NAMESPACE } from "./element";
 import { CustomEvent, Event } from "./event";
-import type { EventTarget } from "./event-target";
+import { type EventTarget, GLOBAL_EVENT_HANDLERS, defineEventHandlers } from "./event-target";
 import { DocumentFragment } from "./fragment";
 import { DOCUMENT_NODE, Node } from "./node";
 import { findById, querySelectorAll } from "./selector";
@@ -128,3 +128,5 @@ export class Document extends Node {
     return undefined;
   }
 }
+
+defineEventHandlers(Document.prototype, [...GLOBAL_EVENT_HANDLERS, "visibilitychange"]);

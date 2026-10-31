@@ -20,8 +20,6 @@ export class Event {
   bubbles: boolean;
   cancelable: boolean;
   composed: boolean;
-  target: EventTarget | null = null;
-  currentTarget: EventTarget | null = null;
   eventPhase = 0;
   defaultPrevented = false;
   isTrusted = false;
@@ -30,12 +28,28 @@ export class Event {
   /** @internal */ $stop = false;
   /** @internal */ $stopImmediate = false;
   /** @internal */ $path: EventTarget[] = [];
+  /**
+   * @internal Backing fields of `target`/`currentTarget`. Those are getters,
+   * as in the DOM, so frameworks can shadow them on the instance with
+   * `Object.defineProperty` (Solid's event delegation does) without breaking
+   * the dispatch.
+   */
+  $target: EventTarget | null = null;
+  /** @internal */ $currentTarget: EventTarget | null = null;
 
   constructor(type: string, init: EventInit = {}) {
     this.type = String(type);
     this.bubbles = !!init.bubbles;
     this.cancelable = !!init.cancelable;
     this.composed = !!init.composed;
+  }
+
+  get target(): EventTarget | null {
+    return this.$target;
+  }
+
+  get currentTarget(): EventTarget | null {
+    return this.$currentTarget;
   }
 
   /** Legacy initializer, used with `document.createEvent()`. */

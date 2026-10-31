@@ -1,10 +1,12 @@
 import { type AttrDefault, COMPONENTS, HTML_TAGS, attrKey, componentOf } from "../components";
 import { enqueueField } from "../update";
 import { DOMTokenList } from "./class-list";
+import type { Document } from "./document";
 import { Event } from "./event";
+import { type EventTarget, GLOBAL_EVENT_HANDLERS, defineEventHandlers } from "./event-target";
 import type { DocumentFragment } from "./fragment";
-import { serialize, serializeChildren, parseHTML } from "./html";
-import { ELEMENT_NODE, Node } from "./node";
+import { SVG_NAMESPACE, serialize, serializeChildren, parseHTML } from "./html";
+import { DOCUMENT_NODE, ELEMENT_NODE, Node } from "./node";
 import { matches, querySelectorAll } from "./selector";
 import { type CSSStyleDeclaration, createStyle } from "./style";
 
@@ -30,6 +32,53 @@ function defaultsOf(component: string): Map<string, AttrDefault> {
   }
   return defaults;
 }
+
+const CLICK = 1;
+const TOUCH = 2;
+const ALL_VIEW_EVENTS = CLICK | TOUCH;
+/** DOM event types of the native events a `view` binds (`tap` is `click`). */
+const VIEW_EVENTS: Record<string, number> = {
+  click: CLICK,
+  touchstart: TOUCH,
+  touchmove: TOUCH,
+  touchend: TOUCH,
+  touchcancel: TOUCH,
+  longpress: TOUCH,
+};
+
+/** {@link VIEW_EVENTS} flags listened to on `target`. */
+function viewEvents(target: EventTarget | null): number {
+  let flags = 0;
+  const listeners = target?.$listeners;
+  if (listeners) for (const type of listeners.keys()) flags |= VIEW_EVENTS[type] ?? 0;
+  return flags;
+}
+
+/** Values of `<input type>` in HTML, see {@link Element.type}. */
+const HTML_INPUT_TYPES = new Set([
+  "button",
+  "checkbox",
+  "color",
+  "date",
+  "datetime-local",
+  "email",
+  "file",
+  "hidden",
+  "image",
+  "month",
+  "number",
+  "password",
+  "radio",
+  "range",
+  "reset",
+  "search",
+  "submit",
+  "tel",
+  "text",
+  "time",
+  "url",
+  "week",
+]);
 
 /**
  * Convert an attribute value to the type the component expects, so string
@@ -154,7 +203,7 @@ export class Element extends Node {
     else if (name === "class") enqueueField(this, "cl");
     else {
       const key = attrKey(name);
-      if (key === "catchmove") this.$listenersChanged();
+      if (key === "catchmove") this.$refreshNodeName();
       else if (defaultsOf(this.$component).has(key)) enqueueField(this, key);
     }
   }
@@ -187,6 +236,22 @@ export class Element extends Node {
 
   set style(value: string) {
     this.style.cssText = value;
+  }
+
+  /**
+   * Reflects the `type` attribute. On `<input>` it is the HTML input type,
+   * `"text"` when missing or not an HTML one (like mini program `digit` or
+   * `nickname`), as in browsers: React only handles `onChange` of inputs
+   * whose `type` it knows.
+   */
+  get type(): string {
+    const type = this.getAttribute("type")?.toLowerCase() ?? "";
+    if (this.localName !== "input") return type;
+    return HTML_INPUT_TYPES.has(type) ? type : "text";
+  }
+
+  set type(value: string) {
+    this.setAttribute("type", value);
   }
 
   get dataset(): Record<string, string | undefined> {
@@ -372,23 +437,42 @@ export class Element extends Node {
 
   // Serialization
 
-  override $listenersChanged(): void {
+  /** @internal Re-send the template name if it changed. */
+  $refreshNodeName(): void {
     if (this.$component === "view" && this.$connected && this.$nodeName() !== this.$nn) {
       enqueueField(this, "nn");
     }
   }
 
-  /** @internal Template name: the component, or a `view` variant. */
+  override $refreshBindings(): void {
+    this.$refreshNodeName();
+    super.$refreshBindings();
+  }
+
+  /**
+   * @internal Template name: the component, or a `view` variant.
+   *
+   * A native event only reaches the runtime through a node binding it, and
+   * does not bubble out of the `comp` component rendering deep subtrees. So a
+   * view binds the touch events listened to on it or on any ancestor, up to
+   * the document and window where delegating frameworks (Solid, Svelte)
+   * listen.
+   */
   $nodeName(): string {
     const component = this.$component;
     if (component !== "view") return component;
     for (const name of this.$attrs.keys()) {
       if (attrKey(name) === "catchmove") return "catch-view";
     }
-    const listeners = this.$listeners;
-    if (!listeners?.size) return "static-view";
-    if (listeners.size === 1 && listeners.has("click")) return "click-view";
-    return "view";
+    let bound = viewEvents(this);
+    let top: Node = this;
+    for (let node = this.parentNode; node && bound !== ALL_VIEW_EVENTS; node = node.parentNode) {
+      bound |= viewEvents(node);
+      top = node;
+    }
+    if (top.nodeType === DOCUMENT_NODE) bound |= viewEvents((top as Document).defaultView);
+    if (!bound) return "static-view";
+    return bound === CLICK ? "click-view" : "view";
   }
 
   /** @internal */
@@ -446,5 +530,48 @@ export class Element extends Node {
     if (this.$style?.length) clone.style.cssText = this.$style.cssText;
     if (this.$content) clone.content!.appendChild(this.$content.cloneNode(true));
     return clone;
+  }
+}
+
+defineEventHandlers(Element.prototype, GLOBAL_EVENT_HANDLERS);
+
+const hasInstance = Function.prototype[Symbol.hasInstance];
+
+/**
+ * Every element is an {@link Element}. `instanceof` the interfaces below
+ * checks namespace and tag instead, like the distinct DOM interfaces:
+ * frameworks branch on them (Vue renders everything as SVG into a container
+ * that is an `SVGElement`). Subclasses (custom elements) keep the prototype
+ * chain check.
+ */
+export class HTMLElement extends Element {
+  static [Symbol.hasInstance](value: unknown): boolean {
+    if (this !== HTMLElement) return hasInstance.call(this, value);
+    return value instanceof Element && value.namespaceURI === HTML_NAMESPACE;
+  }
+}
+
+export class SVGElement extends Element {
+  static [Symbol.hasInstance](value: unknown): boolean {
+    if (this !== SVGElement) return hasInstance.call(this, value);
+    return value instanceof Element && value.namespaceURI === SVG_NAMESPACE;
+  }
+}
+
+/** `<video>` and `<audio>`. */
+export class HTMLMediaElement extends HTMLElement {
+  static [Symbol.hasInstance](value: unknown): boolean {
+    if (this !== HTMLMediaElement) return hasInstance.call(this, value);
+    return (
+      value instanceof HTMLElement && (value.localName === "video" || value.localName === "audio")
+    );
+  }
+}
+
+/** `<iframe>`. Never created by mini programs; React checks for it when restoring focus. */
+export class HTMLIFrameElement extends HTMLElement {
+  static [Symbol.hasInstance](value: unknown): boolean {
+    if (this !== HTMLIFrameElement) return hasInstance.call(this, value);
+    return value instanceof HTMLElement && value.localName === "iframe";
   }
 }
