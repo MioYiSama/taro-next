@@ -1,5 +1,6 @@
-import { defineConfig } from "vite-plus";
 import * as url from "node:url";
+
+import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   pack: {
@@ -11,7 +12,6 @@ export default defineConfig({
       rollup: "./src/plugins/rollup.ts",
       rsbuild: "./src/plugins/rsbuild.ts",
       rspack: "./src/plugins/rspack.ts",
-      unloader: "./src/plugins/unloader.ts",
       vite: "./src/plugins/vite.ts",
       webpack: "./src/plugins/webpack.ts",
     },

@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "types": ["node"],
+    "types": ["node", "bun-types-no-globals"],
     // unplugin's declarations reference every bundler it supports
     "skipLibCheck": true
   },

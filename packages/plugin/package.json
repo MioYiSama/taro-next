@@ -13,22 +13,66 @@
     "./rollup": "./dist/rollup.mjs",
     "./rsbuild": "./dist/rsbuild.mjs",
     "./rspack": "./dist/rspack.mjs",
-    "./unloader": "./dist/unloader.mjs",
     "./vite": "./dist/vite.mjs",
     "./webpack": "./dist/webpack.mjs",
     "./package.json": "./package.json"
   },
   "scripts": {
-    "schema": "json2ts -i src/schema/*.schema.json -o src/schema/"
+    "schema": "json2ts -i src/schema/*.schema.json -o src/schema/",
+    "test": "vp test"
   },
   "dependencies": {
     "@taro-next/runtime": "workspace:*",
+    "oxc-transform": "^0.156.0",
     "unplugin": "^3.7.0"
   },
   "devDependencies": {
+    "@farmfe/core": "^1.7.11",
+    "@rollup/plugin-commonjs": "^29.0.3",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rsbuild/core": "^2.3.0",
+    "@rspack/core": "^2.3.0",
     "@types/node": "^26.6.6",
+    "bun-types-no-globals": "^1.4.4",
+    "esbuild": "^0.28.2",
     "json-schema-to-typescript": "^16.0.0",
+    "rolldown": "^1.2.16",
+    "rollup": "^4.67.2",
+    "rollup-plugin-import-css": "^4.2.1",
     "typescript": "7.1.0-beta",
-    "vite-plus": "^1.4.0"
+    "vite-plus": "^1.4.0",
+    "webpack": "^5.112.2"
+  },
+  "peerDependencies": {
+    "@farmfe/core": "*",
+    "@rsbuild/core": "*",
+    "@rspack/core": "*",
+    "esbuild": "*",
+    "rolldown": "*",
+    "rollup": "*",
+    "webpack": "*"
+  },
+  "peerDependenciesMeta": {
+    "@farmfe/core": {
+      "optional": true
+    },
+    "@rsbuild/core": {
+      "optional": true
+    },
+    "@rspack/core": {
+      "optional": true
+    },
+    "esbuild": {
+      "optional": true
+    },
+    "rolldown": {
+      "optional": true
+    },
+    "rollup": {
+      "optional": true
+    },
+    "webpack": {
+      "optional": true
+    }
   }
 }
