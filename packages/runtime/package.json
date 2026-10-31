@@ -1,0 +1,13 @@
+{
+  "name": "@taro-next/runtime",
+  "version": "0.0.0",
+  "type": "module",
+  "devDependencies": {
+    "typescript": "7.1.0-beta",
+    "vite-plus": "^1.4.0"
+  },
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "@taro-next/plugin",
+  "version": "0.0.0",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    "./bun": "./dist/bun.mjs",
+    "./esbuild": "./dist/esbuild.mjs",
+    "./farm": "./dist/farm.mjs",
+    "./rolldown": "./dist/rolldown.mjs",
+    "./rollup": "./dist/rollup.mjs",
+    "./rsbuild": "./dist/rsbuild.mjs",
+    "./rspack": "./dist/rspack.mjs",
+    "./unloader": "./dist/unloader.mjs",
+    "./vite": "./dist/vite.mjs",
+    "./webpack": "./dist/webpack.mjs",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "unplugin": "^3.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "7.1.0-beta",
+    "vite-plus": "^1.4.0"
+  }
+}
