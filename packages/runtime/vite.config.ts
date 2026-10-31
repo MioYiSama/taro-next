@@ -5,6 +5,8 @@ export default defineConfig({
   pack: {
     entry: {
       index: "./src/index.ts",
+      internal: "./src/internal.ts",
+      components: "./src/components.ts",
     },
     exports: true,
     dts: {

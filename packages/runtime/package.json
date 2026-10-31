@@ -2,12 +2,18 @@
   "name": "@taro-next/runtime",
   "version": "0.0.0",
   "type": "module",
-  "devDependencies": {
-    "typescript": "7.1.0-beta",
-    "vite-plus": "^1.4.0"
-  },
   "exports": {
     ".": "./dist/index.mjs",
+    "./components": "./dist/components.mjs",
+    "./internal": "./dist/internal.mjs",
     "./package.json": "./package.json"
+  },
+  "scripts": {
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "miniprogram-api-typings": "^5.2.3",
+    "typescript": "7.1.0-beta",
+    "vite-plus": "^1.4.0"
   }
 }

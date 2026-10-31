@@ -2,6 +2,10 @@
   "name": "@taro-next/example",
   "private": true,
   "type": "module",
+  "scripts": {
+    "build": "vp build",
+    "dev": "vp build --watch --mode development"
+  },
   "dependencies": {
     "@taro-next/runtime": "workspace:*",
     "preact": "^11.1.0"

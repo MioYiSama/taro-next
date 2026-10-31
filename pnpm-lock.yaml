@@ -225,6 +225,9 @@ importers:
 
   packages/plugin:
     dependencies:
+      '@taro-next/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       unplugin:
         specifier: ^3.7.0
         version: 3.7.0(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(typescript@7.1.0-beta))(rolldown@1.2.16)
@@ -235,9 +238,6 @@ importers:
       json-schema-to-typescript:
         specifier: ^16.0.0
         version: 16.0.0
-      miniprogram-api-typings:
-        specifier: ^5.2.3
-        version: 5.2.3
       typescript:
         specifier: 7.1.0-beta
         version: 7.1.0-beta
@@ -247,6 +247,9 @@ importers:
 
   packages/runtime:
     devDependencies:
+      miniprogram-api-typings:
+        specifier: ^5.2.3
+        version: 5.2.3
       typescript:
         specifier: 7.1.0-beta
         version: 7.1.0-beta

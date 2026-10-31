@@ -1,5 +1,8 @@
 {
   "compilerOptions": {
-    "types": ["node", "miniprogram-api-typings"]
-  }
+    "types": ["node"],
+    // unplugin's declarations reference every bundler it supports
+    "skipLibCheck": true
+  },
+  "include": ["src"]
 }

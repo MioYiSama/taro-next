@@ -1,3 +1,8 @@
 {
-  "compilerOptions": {}
+  "compilerOptions": {
+    "types": ["miniprogram-api-typings"],
+    // miniprogram-api-typings redeclares a few lib.dom globals
+    "skipLibCheck": true
+  },
+  "include": ["src"]
 }

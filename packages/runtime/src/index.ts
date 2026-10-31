@@ -1,7 +1,45 @@
-class TaroWindow {}
+export { start, type StartOptions } from "./app";
+export { nextTick } from "./update";
 
-export function start(f: (window: Window) => void) {
-  const taroWindow = new TaroWindow();
-  globalThis.window = taroWindow;
-  f(globalThis.window);
-}
+// BOM / DOM globals. The build plugin injects these in place of free references
+// (`window`, `document`, ...), which the mini program leaves undefined.
+export {
+  cancelAnimationFrame,
+  document,
+  getComputedStyle,
+  history,
+  localStorage,
+  location,
+  matchMedia,
+  MediaQueryList,
+  Navigator,
+  navigator,
+  performance,
+  queueMicrotask,
+  requestAnimationFrame,
+  screen,
+  sessionStorage,
+  window,
+  window as self,
+  Window,
+} from "./bom/window";
+export { History, Location } from "./bom/history";
+export { Storage } from "./bom/storage";
+export { CharacterData, Comment, Text } from "./dom/character-data";
+export { Document } from "./dom/document";
+export { Element, Element as HTMLElement, Element as SVGElement } from "./dom/element";
+export {
+  CustomEvent,
+  ErrorEvent,
+  Event,
+  HashChangeEvent,
+  MiniProgramEvent,
+  type MpEvent,
+  PopStateEvent,
+  type Touch,
+} from "./dom/event";
+export { EventTarget } from "./dom/event-target";
+export { DocumentFragment } from "./dom/fragment";
+export { Node } from "./dom/node";
+export { CSSStyleDeclaration } from "./dom/style";
+export { DOMTokenList } from "./dom/class-list";
